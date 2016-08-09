@@ -25,7 +25,7 @@ class User
         $subject = 'Активация аккаунта ' . $_SERVER['SERVER_NAME'];
         $headers = 'MIME-Version: 1.0' . "\r\n";
         $headers .= 'Content-type: text/html; charset=iso-8859-1' . "\r\n";
-        $link = 'http://' . $_SERVER['SERVER_NAME'] . $_SERVER['PHP_SELF'] . '?activate=' . $_SESSION['hash'].'&user='.$_SESSION['userToActivate'];
+        $link = 'http://' . $_SERVER['SERVER_NAME'] . $_SERVER['PHP_SELF'] . '?activate=' . $_SESSION['hash'] . '&user=' . $_SESSION['userToActivate'];
         $message = <<<EOT
 <!DOCTYPE html>
 <html>
@@ -33,7 +33,7 @@ class User
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 </head>
 <body>
-<h1 style='margin:auto;'>Почти готово!</h1>
+<h1 style='margin:auto; text-aling:center;'>Почти готово!</h1>
 <p>Уважаемый {$username}, ваша регистрация почти завершена, чтоб подтвердить ваш e-mail адресс перейдите по ссылке <a href="{$link}">{$link}</a></p>
 </body>
 </html>
@@ -45,6 +45,7 @@ EOT;
     {
         if ($_SESSION['hash'] == $hash && $_SESSION['userToActivate'] == $username) {
             $this->link->query("UPDATE users SET active=1 WHERE username='{$username}'");
+            unset($_SESSION['hash']);
             return true;
         }
         return false;
@@ -77,6 +78,16 @@ EOT;
         }
     }
 
+    private function is_active($username)
+    {
+        $query = $this->link->query("SELECT `active` FROM `users` WHERE username='{$username}'");
+        if ($query->fetch_assocc()['active'] == 1) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     public function is_logged()
     {
         if (!empty($_SESSION['username']) && !empty($_SESSION['password']) && $_COOKIE['login']) {
@@ -84,7 +95,11 @@ EOT;
             $password = $_SESSION['password'];
             $query = $this->link->query("SELECT id FROM users WHERE username='{$username}' and password='{$password}'");
             if ($query->num_rows) {
-                return true;
+                if ($this->is_active($username)) {
+                    return true;
+                } else {
+                    return false;
+                }
             } else {
                 session_destroy();
                 return false;
