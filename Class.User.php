@@ -9,7 +9,7 @@ class User
         $this->link = $link;
     }
 
-    private function RegisterValidate($username, $pass1, $pass2, $email)
+    private function registerValidate($username, $pass1, $pass2, $email)
     {
         if (stripos(' ', $username) || $pass1 !== $pass2 || stripos(' ', $pass1) || strlen($pass1) < 5 || !preg_match('/^(?!(?:(?:\x22?\x5C[\x00-\x7E]\x22?)|(?:\x22?[^\x5C\x22]\x22?)){255,})(?!(?:(?:\x22?\x5C[\x00-\x7E]\x22?)|(?:\x22?[^\x5C\x22]\x22?)){65,}@)(?:(?:[\x21\x23-\x27\x2A\x2B\x2D\x2F-\x39\x3D\x3F\x5E-\x7E]+)|(?:\x22(?:[\x01-\x08\x0B\x0C\x0E-\x1F\x21\x23-\x5B\x5D-\x7F]|(?:\x5C[\x00-\x7F]))*\x22))(?:\.(?:(?:[\x21\x23-\x27\x2A\x2B\x2D\x2F-\x39\x3D\x3F\x5E-\x7E]+)|(?:\x22(?:[\x01-\x08\x0B\x0C\x0E-\x1F\x21\x23-\x5B\x5D-\x7F]|(?:\x5C[\x00-\x7F]))*\x22)))*@(?:(?:(?!.*[^.]{64,})(?:(?:(?:xn--)?[a-z0-9]+(?:-[a-z0-9]+)*\.){1,126}){1,}(?:(?:[a-z][a-z0-9]*)|(?:(?:xn--)[a-z0-9]+))(?:-[a-z0-9]+)*)|(?:\[(?:(?:IPv6:(?:(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){7})|(?:(?!(?:.*[a-f0-9][:\]]){7,})(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,5})?::(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,5})?)))|(?:(?:IPv6:(?:(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){5}:)|(?:(?!(?:.*[a-f0-9]:){5,})(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,3})?::(?:[a-f0-9]{1,4}(?::[a-f0-9]{1,4}){0,3}:)?)))?(?:(?:25[0-5])|(?:2[0-4][0-9])|(?:1[0-9]{2})|(?:[1-9]?[0-9]))(?:\.(?:(?:25[0-5])|(?:2[0-4][0-9])|(?:1[0-9]{2})|(?:[1-9]?[0-9]))){3}))\]))$/iD', $email)) {
             return false;
@@ -18,7 +18,39 @@ class User
         }
     }
 
-    public function LoginValidate($username, $password)
+    private function sendActivateCode($username, $email)
+    {
+        $_SESSION['hash'] = md5($username . $email . time());
+        $_SESSION['userToActivate'] = $username;
+        $subject = 'Активация аккаунта ' . $_SERVER['SERVER_NAME'];
+        $headers = 'MIME-Version: 1.0' . "\r\n";
+        $headers .= 'Content-type: text/html; charset=iso-8859-1' . "\r\n";
+        $link = 'http://' . $_SERVER['SERVER_NAME'] . $_SERVER['PHP_SELF'] . '?activate=' . $_SESSION['hash'].'&user='.$_SESSION['userToActivate'];
+        $message = <<<EOT
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+</head>
+<body>
+<h1 style='margin:auto;'>Почти готово!</h1>
+<p>Уважаемый {$username}, ваша регистрация почти завершена, чтоб подтвердить ваш e-mail адресс перейдите по ссылке <a href="{$link}">{$link}</a></p>
+</body>
+</html>
+EOT;
+        mail($email, $subject, $message, $headers);
+    }
+
+    public function activate($hash, $username)
+    {
+        if ($_SESSION['hash'] == $hash && $_SESSION['userToActivate'] == $username) {
+            $this->link->query("UPDATE users SET active=1 WHERE username='{$username}'");
+            return true;
+        }
+        return false;
+    }
+
+    public function loginValidate($username, $password)
     {
         if (stripos(' ', $username) || stripos(' ', $password)) {
             return false;
@@ -29,11 +61,13 @@ class User
 
     public function register($username, $pass1, $pass2, $email)
     {
-        if ($this->RegisterValidate($username, $pass1, $pass2, $email)) {
+        if ($this->registerValidate($username, $pass1, $pass2, $email)) {
             $pass = md5($this->link->real_escape_string($pass1));
             $username = $this->link->real_escape_string($username);
-            $this->link->query("INSERT INTO users (username, password, email) VALUES ('{$username}', '{$pass}', '{$email}')");
+            $ip = $_SERVER['REMOTE_ADDR'];
+            $this->link->query("INSERT INTO `users` (`username`, `password`, `email`, `ip`) VALUES ('{$username}', '{$pass}', '{$email}', '{$ip}')");
             if (!$this->link->error) {
+                $this->sendActivateCode($username, $email);
                 return true;
             } else {
                 return false;
@@ -55,14 +89,14 @@ class User
                 session_destroy();
                 return false;
             }
-        }else{
+        } else {
             return false;
         }
     }
 
     public function singIn($username, $password)
     {
-        if ($this->LoginValidate($username, $password)) {
+        if ($this->loginValidate($username, $password)) {
             $password = md5($this->link->real_escape_string($password));
             $username = $this->link->real_escape_string($username);
             $query = $this->link->query("SELECT id FROM users WHERE username='{$username}' and password='{$password}'");
